@@ -31,6 +31,22 @@ DEBUG = "--debug" in sys.argv
 # The corner-slam emergency abort (FAILSAFE) still works.
 pyautogui.PAUSE = 0
 
+# Roblox uses raw input and silently DROPS pyautogui's standard SendInput
+# clicks.  On Windows we drive the mouse/keyboard with pydirectinput instead,
+# which sends the lower-level (scancode/absolute) input the game accepts.
+# pydirectinput is Windows-only, so everywhere else — and if it isn't installed
+# — we fall back to pyautogui.
+_input = pyautogui
+if sys.platform == "win32":
+    try:
+        import pydirectinput
+        pydirectinput.PAUSE = 0
+        pydirectinput.FAILSAFE = False
+        _input = pydirectinput
+    except ImportError:
+        print("[!] pydirectinput not installed — clicks may not register in "
+              "Roblox.  Run:  python -m pip install pydirectinput")
+
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
 CASH_TRIGGER  = 133.0
@@ -151,11 +167,11 @@ def click(lx, ly):
     # in the same instant never registers.  Move into place, let the cursor
     # settle, then HOLD the button down briefly before releasing so the game
     # sees a real press.
-    pyautogui.moveTo(lx, ly, duration=0.08)
+    _input.moveTo(lx, ly)
     time.sleep(0.04)
-    pyautogui.mouseDown()
+    _input.mouseDown()
     time.sleep(0.09)
-    pyautogui.mouseUp()
+    _input.mouseUp()
     _invalidate()
     time.sleep(0.08)
 
@@ -424,7 +440,7 @@ def recover():
     focus.  Cheap and safe to run on a clean screen too."""
     print("  [⟳] WATCHDOG — screen looks stuck, forcing a reset")
     for _ in range(2):
-        pyautogui.press("esc")
+        _input.press("esc")
         time.sleep(0.25)
     _invalidate()
     click(*NEUTRAL_CLICK)
