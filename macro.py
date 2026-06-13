@@ -69,6 +69,8 @@ GLIDE_DELAY  = 0.009    # seconds per step  -> ~0.29s of travel
 CLICK_SETTLE = 0.18     # pause after arriving on target, before pressing
 CLICK_HOLD   = 0.12     # button held down
 CLICK_POST   = 0.18     # pause after releasing, before the next action
+ONE_PCT_SETTLE = 1.0    # the 1% tab is finicky — hover a full second on it
+                        # before pressing so the click always lands
 
 # The 1% tab sits at a FIXED spot (logical px).  Set once measured; OCR keeps
 # misreading it, so a hardcoded click is the reliable path.  None -> try OCR.
@@ -194,11 +196,13 @@ def _glide(lx, ly, steps=GLIDE_STEPS, step_delay=GLIDE_DELAY):
         _input.moveTo(x, y)
         time.sleep(step_delay)
 
-def click(lx, ly):
+def click(lx, ly, settle=CLICK_SETTLE):
     # Glide onto the target (see _glide) so Roblox arms the hover, settle, then
     # HOLD the button down briefly — an instant press isn't registered either.
+    # `settle` can be raised for finicky targets (e.g. the 1% tab) to hover
+    # longer before pressing so the click reliably lands.
     _glide(lx, ly)
-    time.sleep(CLICK_SETTLE)
+    time.sleep(settle)
     _input.mouseDown()
     time.sleep(CLICK_HOLD)
     _input.mouseUp()
@@ -405,7 +409,7 @@ def check_for_disconnect():
 def click_one_percent_tab():
     if ONE_PERCENT_TAB:
         print(f"  [✓] 1% tab (fixed) at {ONE_PERCENT_TAB}")
-        click(*ONE_PERCENT_TAB)
+        click(*ONE_PERCENT_TAB, settle=ONE_PCT_SETTLE)
         return True
     img  = grab(TAB_REGION_PHYS)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -419,10 +423,10 @@ def click_one_percent_tab():
             lx = TAB_REGION_PHYS[0] + px
             ly = TAB_REGION_PHYS[1] + py
             print(f"  [✓] 1% tab at ({lx}, {ly})")
-            click(lx, ly)
+            click(lx, ly, settle=ONE_PCT_SETTLE)
             return True
     print("  [!] 1% tab OCR failed, using fallback")
-    click(194, 174)
+    click(194, 174, settle=ONE_PCT_SETTLE)
     return False
 
 # ─── WAIT FOR DROP + SELL ─────────────────────────────────────────────────────
