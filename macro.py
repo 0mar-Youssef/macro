@@ -384,7 +384,7 @@ def check_for_disconnect():
 def click_one_percent_tab():
     if ONE_PERCENT_TAB:
         print(f"  [✓] 1% tab (fixed) at {ONE_PERCENT_TAB}")
-        click(*ONE_PERCENT_TAB, settle=1.5)
+        click(*ONE_PERCENT_TAB, settle=2.0)
         return True
     img  = grab(TAB_REGION_PHYS)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
@@ -398,10 +398,10 @@ def click_one_percent_tab():
             lx = int((TAB_REGION_PHYS[0] + px) / DISPLAY_SCALE)
             ly = int((TAB_REGION_PHYS[1] + py) / DISPLAY_SCALE)
             print(f"  [✓] 1% tab at ({lx}, {ly})")
-            click(lx, ly, settle=1.5)
+            click(lx, ly, settle=2.0)
             return True
     print("  [!] 1% tab OCR failed, using fallback")
-    click(194, 174, settle=1.5)
+    click(194, 174, settle=2.0)
     return False
 
 # ─── WAIT FOR DROP + SELL ─────────────────────────────────────────────────────
