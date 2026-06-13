@@ -167,8 +167,16 @@ def click(lx, ly):
     # in the same instant never registers.  Move into place, let the cursor
     # settle, then HOLD the button down briefly before releasing so the game
     # sees a real press.
+    # Roblox GUI buttons only "arm" once they see the cursor MOVING over them,
+    # and pydirectinput.moveTo teleports (no intermediate move events) — so a
+    # straight move-then-click can land on a button that never registered the
+    # hover.  Wiggle a few px on the target first to emit real move events, then
+    # hold-click.
     _input.moveTo(lx, ly)
-    time.sleep(0.04)
+    _input.moveTo(lx - 4, ly - 4)
+    _input.moveTo(lx + 4, ly + 4)
+    _input.moveTo(lx, ly)
+    time.sleep(0.05)
     _input.mouseDown()
     time.sleep(0.09)
     _input.mouseUp()
