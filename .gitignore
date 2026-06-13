@@ -1,8 +1,13 @@
-# venv
-bin/
-lib/
-include/
-pyvenv.cfg
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Virtualenv
+bin/
+include/
+lib/
+lib64/
+pyvenv.cfg
+
+# OS
 .DS_Store

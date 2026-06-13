@@ -5,11 +5,13 @@ import pyautogui
 import mss
 import time
 import sys
+import os
 import re
 import tempfile
-import os
 from PIL import Image
 
+# Windows ships no Tesseract on PATH — point pytesseract at the default install
+# location so OCR works out of the box.  (No-op on macOS/Linux where it's on PATH.)
 if sys.platform == "win32":
     pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
@@ -34,33 +36,28 @@ AFK_EVERY      = 5      # watch for the AFK popup every Nth round (during the
 
 # The 1% tab sits at a FIXED spot (logical px).  Set once measured; OCR keeps
 # misreading it, so a hardcoded click is the reliable path.  None -> try OCR.
-ONE_PERCENT_TAB = (550, 236)
+ONE_PERCENT_TAB = (413, 177)
 
 # Leaf Case grid slot — fixed once the 1% tab is open (logical px).  Template
 # matching it was unreliable (conf ~0.30), so we click the known slot instead.
-LEAF_CASE_POS = (1390, 372)
+LEAF_CASE_POS = (1033, 286)
 
 VIP_TEMPLATE     = "templates/vip_free_case.png"
 LEAF_TEMPLATE    = "templates/leaf_case.png"
 CONFIRM_TEMPLATE = "templates/confirm_check.png"
 LEAVE_TEMPLATE   = "templates/leave_button.png"   # Roblox "Disconnected" dialog
 
-# Rejoin flow after a kick = LEAVE (template, always same spot) then TWO fixed
-# clicks the user measured on the landing/game page:
-#   Leave -> wait 6s -> click REJOIN_1 -> wait 1s -> click REJOIN_2 -> load.
-REJOIN_1        = (421,  933)   # first button on the landing page after Leave
-REJOIN_2        = (1226, 353)   # play/join button (appears ~1s later)
-LEAVE_WAIT      = 6.0     # disconnect dialog -> game landing page
-REJOIN_STEP_WAIT = 1.0    # REJOIN_1 -> REJOIN_2 appears
-REJOIN_LOAD_WAIT = 7.0    # final click -> game fully loaded back in (max ~7s)
+# Single rejoin click — when the kick dialog is detected, click this coordinate
+# (the rejoin/play button that appears in that state).
+KICK_REJOIN_POS  = (1052, 616)
+REJOIN_LOAD_WAIT = 7.0    # click -> game fully loaded back in (max ~7s)
 
 # ── Watchdog: break out of a stuck modal / reward overlay ──────────────────────
 # If N rounds in a row find no sell button, the screen is stuck on some overlay
 # that nothing else (AFK / disconnect) detects.  Press Escape + click a neutral
 # spot to dismiss it, then carry on.
 STUCK_LIMIT     = 4              # consecutive sell-failures before a reset
-# ⚠ NEEDS MEASUREMENT on friend's screen — this is a scaled estimate.
-NEUTRAL_CLICK   = (1280, 1236)   # empty board area, safe to click (logical px)
+NEUTRAL_CLICK   = (960, 927)     # empty board area, safe to click (logical px)
 # Cash sanity.  Between Leaf resets the cash ONLY climbs, in small steps (~$2-3
 # per VIP sell).  Every OCR error seen live is a dropped/extra decimal point —
 # a power-of-10 mistake ('$1152' for $115.2, '$131142' for $131.14).  So we use
@@ -83,44 +80,38 @@ CASH_EVERY = 10          # read cash every Nth round while far from the trigger
 CASH_NEAR  = 6.0         # within this of the trigger -> read every round
                          # (133 - 6 = $127: at 127+ we watch every round)
 
-# Physical screen 2560x1440 | Logical 2560x1440 | Scale 1x (Windows 100% DPI)
+# Physical screen 1920x1080 | Logical 1920x1080 | Scale 1x (Windows 100% DPI)
 # REGION constants are PHYSICAL pixels.  Clicks are LOGICAL pixels.
-# On Windows at 100% DPI scaling, physical == logical so DISPLAY_SCALE = 1.
-# If your friend uses 125% DPI scaling, set DISPLAY_SCALE = 1.25 and adjust
-# PHYS_W/H to the physical resolution (still 2560x1440).
-DISPLAY_SCALE   = 1
-PHYS_W, PHYS_H  = 2560, 1440
+# At 1x DPI physical == logical.
+PHYS_W, PHYS_H = 1920, 1080
 
-# Regions scaled proportionally from original 1710x1107 logical space.
-CASH_REGION_PHYS    = (2216,  65, 2470, 130)
-TAB_REGION_PHYS     = (   0, 200, 1797, 254)
-VIP_REGION_PHYS     = (   0, 241, 1048, 533)
-# Crop the right-edge Live Feed strip (physical x > 2170) to avoid false AFK
-# matches from the green panels there.
-CONFIRM_REGION_PHYS = (0, 0, 2171, 1440)
+# Tightened to JUST the cash number on the far right — the old (2200,...) box
+# swept up the profile icons + "Your Profile" text + the (+) button, which OCR
+# turned into junk digits ('6 $411.6 2').  This box is icon-free.
+CASH_REGION_PHYS = (1662,  49, 1853,  98)
+TAB_REGION_PHYS  = (   0, 151, 1347, 190)
+VIP_REGION_PHYS  = (   0, 181,  786, 400)
+# The AFK popup MOVES — seen top-left (~203,295) and centre (~714,544) — so we
+# search the whole board but CROP OFF the right-edge "Live Feed" strip (physical
+# x > 1628).  Those green panels score ~0.89 on the green-check template and would
+# otherwise mask the real popup (find_template returns only the single best match).
+CONFIRM_REGION_PHYS = (0, 0, 1628, 1080)
 
 # Bright, saturated green of the Sell button — calibrated from a real screen
 # capture (button measured at HSV S>=120; muted modal background is below this).
 SELL_GREEN_LO = np.array([40, 115, 105])
 SELL_GREEN_HI = np.array([82, 255, 255])
 
-# Minimum sell-button blob area scales with screen resolution so the threshold
-# stays valid across different display sizes (was 12_000 on 3420x2214).
-_AREA_SCALE   = (PHYS_W * PHYS_H) / (3420 * 2214)
-SELL_MIN_AREA = max(3000, int(12_000 * _AREA_SCALE))
-
 # ─── FAST SCREENSHOT (mss) ────────────────────────────────────────────────────
-# mss grabs the framebuffer directly (no subprocess / temp file).  On this
-# Retina display it may return logical OR physical resolution depending on the
-# OS; we normalise every frame to physical (3420x2214) so all the physical
-# coordinate math below is always valid.
+# mss grabs the framebuffer directly (no subprocess / temp file).  We normalise
+# every frame to PHYS_W x PHYS_H so all the physical coordinate math is valid.
 
 _sct      = mss.mss()
 _monitor  = _sct.monitors[1]
 _frame    = {'arr': None, 'ts': 0.0}
 
 def grab(phys_region=None, max_age=0.15):
-    """Return a physical-resolution (3420x2214) RGB numpy array, cached briefly."""
+    """Return a physical-resolution (1920x1080) RGB numpy array, cached briefly."""
     now = time.time()
     if _frame['arr'] is None or now - _frame['ts'] > max_age:
         raw = np.asarray(_sct.grab(_monitor))          # BGRA
@@ -179,7 +170,7 @@ def find_template(template_path, phys_region=None, confidence=0.60,
         if phys_region:
             px += phys_region[0]
             py += phys_region[1]
-        return (int(px / DISPLAY_SCALE), int(py / DISPLAY_SCALE))
+        return (px, py)
     return None
 
 def find_and_click(template_path, label, phys_region=None,
@@ -221,18 +212,18 @@ def find_sell_button(exclude=None):
             continue
         area, aspect = w * h, w / h
         cx, cy = x + w // 2, y + h // 2
-        if area < SELL_MIN_AREA:           continue   # too small
+        if area < 3_500:                  continue   # too small
         if not (1.8 < aspect < 4.3):      continue   # button is wide
         if cy < sh * 0.30:                continue   # skip top cash/gems bar
         if not (sw * 0.08 < cx < sw*0.92):continue
-        if exclude and abs(cx // 2 - exclude[0]) < 130 \
-                   and abs(cy // 2 - exclude[1]) < 130:
+        if exclude and abs(cx - exclude[0]) < 130 \
+                   and abs(cy - exclude[1]) < 130:
             continue                                 # that's the AFK checkmark
         if area > best_area:
             best_area, best = area, (cx, cy)
 
     if best:
-        return (int(best[0] / DISPLAY_SCALE), int(best[1] / DISPLAY_SCALE))
+        return (best[0], best[1])
     return None
 
 # ─── CASH OCR ─────────────────────────────────────────────────────────────────
@@ -288,7 +279,6 @@ def read_cash(hint=None):
     pil = Image.fromarray(thr)
     if DEBUG:
         pil.save(os.path.join(tempfile.gettempdir(), "debug_cash_thresh.png"))
-        Image.fromarray(img).save(os.path.join(tempfile.gettempdir(), "debug_cash_raw.png"))
     txt = pytesseract.image_to_string(
         pil, config="--psm 7 -c tessedit_char_whitelist=0123456789.$").strip()
     if DEBUG:
@@ -318,26 +308,17 @@ def check_for_confirm():
 # ─── DISCONNECT / REJOIN ──────────────────────────────────────────────────────
 
 def check_for_disconnect():
-    """If the Roblox 'Disconnected' (AFK kick) dialog is up, click its Leave
-    button.  Leave is always in the same place, so the template doubles as both
-    the detector and the click target.  Safe no-op until the template exists."""
+    """If the Roblox kick dialog is up, click the rejoin button directly."""
     try:
         pos = find_template(LEAVE_TEMPLATE, confidence=0.62,
                             scales=(1.0, 0.92, 1.08), label="leave")
     except Exception:
         return False                     # template not captured yet
     if pos:
-        print(f"  [⚠] DISCONNECTED (AFK kick) — rejoining…")
-        print(f"      1/3 Leave {pos}")
-        click(*pos)
-        time.sleep(LEAVE_WAIT)           # wait for the game landing page
-        print(f"      2/3 Rejoin step 1 {REJOIN_1}")
-        click(*REJOIN_1)
-        time.sleep(REJOIN_STEP_WAIT)     # let the play/join button appear
-        print(f"      3/3 Rejoin step 2 {REJOIN_2}")
-        click(*REJOIN_2)
+        print(f"  [⚠] DISCONNECTED — clicking rejoin at {KICK_REJOIN_POS}")
+        click(*KICK_REJOIN_POS)
         print(f"      loading… ({REJOIN_LOAD_WAIT:.0f}s)")
-        time.sleep(REJOIN_LOAD_WAIT)     # let the game fully reload
+        time.sleep(REJOIN_LOAD_WAIT)
         return True
     return False
 
@@ -357,8 +338,8 @@ def click_one_percent_tab():
         if '1%' in t and int(data['conf'][i]) > 20:
             px = data['left'][i] + data['width'][i]  // 2
             py = data['top'][i]  + data['height'][i] // 2
-            lx = int((TAB_REGION_PHYS[0] + px) / DISPLAY_SCALE)
-            ly = int((TAB_REGION_PHYS[1] + py) / DISPLAY_SCALE)
+            lx = TAB_REGION_PHYS[0] + px
+            ly = TAB_REGION_PHYS[1] + py
             print(f"  [✓] 1% tab at ({lx}, {ly})")
             click(lx, ly)
             return True
