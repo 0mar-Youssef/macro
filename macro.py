@@ -10,10 +10,19 @@ import re
 import tempfile
 from PIL import Image
 
-# Windows ships no Tesseract on PATH — point pytesseract at the default install
-# location so OCR works out of the box.  (No-op on macOS/Linux where it's on PATH.)
+# Windows ships no Tesseract on PATH — point pytesseract at the first install
+# location we find so OCR works out of the box.  (No-op on macOS/Linux where
+# it's already on PATH.)  The UB-Mannheim installer drops it in Program Files by
+# default, but a per-user install lands in %LOCALAPPDATA%\Programs instead.
 if sys.platform == "win32":
-    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    for _p in (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+    ):
+        if os.path.exists(_p):
+            pytesseract.pytesseract.tesseract_cmd = _p
+            break
 
 DEBUG = "--debug" in sys.argv
 
@@ -36,7 +45,7 @@ AFK_EVERY      = 5      # watch for the AFK popup every Nth round (during the
 
 # The 1% tab sits at a FIXED spot (logical px).  Set once measured; OCR keeps
 # misreading it, so a hardcoded click is the reliable path.  None -> try OCR.
-ONE_PERCENT_TAB = (413, 177)
+ONE_PERCENT_TAB = (412, 156)
 
 # Leaf Case grid slot — fixed once the 1% tab is open (logical px).  Template
 # matching it was unreliable (conf ~0.30), so we click the known slot instead.
@@ -85,17 +94,20 @@ CASH_NEAR  = 6.0         # within this of the trigger -> read every round
 # At 1x DPI physical == logical.
 PHYS_W, PHYS_H = 1920, 1080
 
-# Tightened to JUST the cash number on the far right — the old (2200,...) box
-# swept up the profile icons + "Your Profile" text + the (+) button, which OCR
-# turned into junk digits ('6 $411.6 2').  This box is icon-free.
-CASH_REGION_PHYS = (1662,  49, 1853,  98)
-TAB_REGION_PHYS  = (   0, 151, 1347, 190)
+# Tightened to JUST the "$47.86" cash number top-right (between the green cube
+# icon and the (+) button).  Measured on a real 1920x1080 capture — sits a touch
+# left of the (+) so OCR never sweeps it up, and right of the cube/gems so it
+# can't grab the wrong currency.
+CASH_REGION_PHYS = (1695,  10, 1815,  56)
+TAB_REGION_PHYS  = (   0, 138, 1347, 174)
 VIP_REGION_PHYS  = (   0, 181,  786, 400)
-# The AFK popup MOVES — seen top-left (~203,295) and centre (~714,544) — so we
-# search the whole board but CROP OFF the right-edge "Live Feed" strip (physical
-# x > 1628).  Those green panels score ~0.89 on the green-check template and would
-# otherwise mask the real popup (find_template returns only the single best match).
-CONFIRM_REGION_PHYS = (0, 0, 1628, 1080)
+# The "Live Feed" panel runs down the RIGHT edge (physical x > ~1660) and its
+# entries have bright-green backgrounds that the sell/confirm detectors would
+# otherwise lock onto.  Crop it off for both the green-blob sell search and the
+# AFK-checkmark template search.
+LIVE_FEED_X         = 1660
+SELL_REGION_PHYS    = (0, 0, LIVE_FEED_X, 1080)
+CONFIRM_REGION_PHYS = (0, 0, LIVE_FEED_X, 1080)
 
 # Bright, saturated green of the Sell button — calibrated from a real screen
 # capture (button measured at HSV S>=120; muted modal background is below this).
@@ -195,7 +207,7 @@ def find_sell_button(exclude=None):
     exclude: logical (x, y) to stay away from — used while the AFK popup is up
     so its green checkmark can't be mistaken for the Sell button.
     """
-    screen = grab()
+    screen = grab(SELL_REGION_PHYS)          # crops the right-edge Live Feed
     sh, sw = screen.shape[:2]
     hsv  = cv2.cvtColor(screen, cv2.COLOR_RGB2HSV)
     mask = cv2.inRange(hsv, SELL_GREEN_LO, SELL_GREEN_HI)
@@ -310,7 +322,7 @@ def check_for_confirm():
 def check_for_disconnect():
     """If the Roblox kick dialog is up, click the rejoin button directly."""
     try:
-        pos = find_template(LEAVE_TEMPLATE, confidence=0.62,
+        pos = find_template(LEAVE_TEMPLATE, confidence=0.90,
                             scales=(1.0, 0.92, 1.08), label="leave")
     except Exception:
         return False                     # template not captured yet
