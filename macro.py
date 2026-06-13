@@ -69,14 +69,14 @@ LEAF_TEMPLATE    = "templates/leaf_case.png"
 CONFIRM_TEMPLATE = "templates/confirm_check.png"
 LEAVE_TEMPLATE   = "templates/leave_button.png"   # Roblox "Disconnected" dialog
 
-# Rejoin flow after a kick = LEAVE (template, always same spot) then TWO fixed
-# clicks the user measured on the landing/game page:
-#   Leave -> wait 6s -> click REJOIN_1 -> wait 1s -> click REJOIN_2 -> load.
-REJOIN_1        = (421,  933)   # first button on the landing page after Leave
-REJOIN_2        = (1226, 353)   # play/join button (appears ~1s later)
-LEAVE_WAIT      = 6.0     # disconnect dialog -> game landing page
-REJOIN_STEP_WAIT = 1.0    # REJOIN_1 -> REJOIN_2 appears
-REJOIN_LOAD_WAIT = 7.0    # final click -> game fully loaded back in (max ~7s)
+# Rejoin flow: detect disconnect dialog -> click Leave -> wait -> REJOIN_1 ->
+# wait -> REJOIN_2 -> wait for game to load.
+LEAVE_BUTTON     = (1281, 792)   # fixed Leave button in the disconnect dialog
+REJOIN_1         = (419,  1331)  # first button on the landing page after Leave
+REJOIN_2         = (1229, 359)   # play/join button (appears ~2s later)
+LEAVE_WAIT       = 3.0    # disconnect dialog -> game landing page
+REJOIN_STEP_WAIT = 2.0    # REJOIN_1 -> REJOIN_2 appears
+REJOIN_LOAD_WAIT = 4.0    # final click -> game fully loaded back in
 
 # ── Watchdog: break out of a stuck modal / reward overlay ──────────────────────
 # If N rounds in a row find no sell button, the screen is stuck on some overlay
@@ -356,26 +356,28 @@ def check_for_confirm():
 # ─── DISCONNECT / REJOIN ──────────────────────────────────────────────────────
 
 def check_for_disconnect():
-    """If the Roblox 'Disconnected' (AFK kick) dialog is up, click its Leave
-    button.  Leave is always in the same place, so the template doubles as both
-    the detector and the click target.  Safe no-op until the template exists."""
+    """Detect the Roblox 'Disconnected' dialog via template match.  During normal
+    play the leave template scores ~0.11-0.15; the actual white Leave button on a
+    dark disconnect overlay scores noticeably higher, so 0.35 separates them.
+    Click position is fixed (LEAVE_BUTTON) so a platform-mismatched template still
+    works as long as it detects correctly."""
     try:
-        pos = find_template(LEAVE_TEMPLATE, confidence=0.62,
-                            scales=(1.0, 0.92, 1.08), label="leave")
+        detected = find_template(LEAVE_TEMPLATE, confidence=0.35,
+                                 scales=(1.0, 0.92, 1.08), label="leave")
     except Exception:
-        return False                     # template not captured yet
-    if pos:
-        print(f"  [⚠] DISCONNECTED (AFK kick) — rejoining…")
-        print(f"      1/3 Leave {pos}")
-        click(*pos)
-        time.sleep(LEAVE_WAIT)           # wait for the game landing page
+        return False
+    if detected:
+        print(f"  [⚠] DISCONNECTED — rejoining…")
+        print(f"      1/3 Leave {LEAVE_BUTTON}")
+        click(*LEAVE_BUTTON)
+        time.sleep(LEAVE_WAIT)
         print(f"      2/3 Rejoin step 1 {REJOIN_1}")
         click(*REJOIN_1)
-        time.sleep(REJOIN_STEP_WAIT)     # let the play/join button appear
+        time.sleep(REJOIN_STEP_WAIT)
         print(f"      3/3 Rejoin step 2 {REJOIN_2}")
         click(*REJOIN_2)
         print(f"      loading… ({REJOIN_LOAD_WAIT:.0f}s)")
-        time.sleep(REJOIN_LOAD_WAIT)     # let the game fully reload
+        time.sleep(REJOIN_LOAD_WAIT)
         return True
     return False
 
