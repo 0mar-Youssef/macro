@@ -53,7 +53,9 @@ CASH_TRIGGER  = 133.0
 DROP_MAX_WAIT = 9.0     # max seconds to wait for the drop modal
 DROP_MIN_WAIT = 4.0     # sell never shows before ~4.7s — pure sleep until here
 POLL_INTERVAL = 0.1     # fast polls in the catch window -> near-instant sell
-SELL_WAIT     = 0.1
+SELL_WAIT     = 0.4     # after the sell click, let the ~0.4s sell animation
+                        # finish before the next action (VIP open / 1% tab) — the
+                        # game ignores clicks while the animation is still playing
 LEAVE_CHECK_AT = 6.0    # sell normally shows by ~4.8s; if it's not there by
                         # now, check whether we got kicked (Leave dialog up)
 AFK_EVERY      = 5      # watch for the AFK popup every Nth round (during the
@@ -490,8 +492,8 @@ def open_leaf_case_once():
     print(f"  [✓] Leaf Case (fixed) at {LEAF_CASE_POS}")
     click(*LEAF_CASE_POS)
     sold = wait_for_drop_and_sell()
-    print("[→] Back to VIP tab...")
-    click_one_percent_tab()
+    print("[→] 1% again to get back to VIP...")
+    click_one_percent_tab()              # 1% AGAIN — toggles back off the 1% tab
     time.sleep(0.6)
     return sold
 
