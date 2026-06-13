@@ -72,10 +72,16 @@ LEAF_TEMPLATE    = "templates/leaf_case.png"
 CONFIRM_TEMPLATE = "templates/confirm_check.png"
 LEAVE_TEMPLATE   = "templates/leave_button.png"   # Roblox "Disconnected" dialog
 
-# Single rejoin click — when the kick dialog is detected, click this coordinate
-# (the rejoin/play button that appears in that state).
-KICK_REJOIN_POS  = (1052, 616)
-REJOIN_LOAD_WAIT = 7.0    # click -> game fully loaded back in (max ~7s)
+# Rejoin flow after an AFK kick.  When the "Disconnected" dialog is detected we
+# click LEAVE (fixed spot), wait for the landing page, then two fixed clicks to
+# rejoin the game:
+#   Leave -> wait 2s -> REJOIN_1 -> wait 1s -> REJOIN_2 -> wait for load.
+LEAVE_POS        = (960, 614)   # "Leave" button on the Disconnected dialog
+REJOIN_1         = (186, 901)   # first button on the landing page after Leave
+REJOIN_2         = (907, 267)   # play/join button (appears ~1s later)
+LEAVE_WAIT       = 2.0     # Leave -> landing page
+REJOIN_STEP_WAIT = 1.0     # REJOIN_1 -> REJOIN_2 appears
+REJOIN_LOAD_WAIT = 7.0     # final click -> game fully loaded back in (max ~7s)
 
 # ── Watchdog: break out of a stuck modal / reward overlay ──────────────────────
 # If N rounds in a row find no sell button, the screen is stuck on some overlay
@@ -110,11 +116,11 @@ CASH_NEAR  = 6.0         # within this of the trigger -> read every round
 # At 1x DPI physical == logical.
 PHYS_W, PHYS_H = 1920, 1080
 
-# Tightened to JUST the "$47.86" cash number top-right (between the green cube
-# icon and the (+) button).  Measured on a real 1920x1080 capture — sits a touch
-# left of the (+) so OCR never sweeps it up, and right of the cube/gems so it
-# can't grab the wrong currency.
-CASH_REGION_PHYS = (1695,  10, 1815,  56)
+# The cash number top-right (between the green cube icon and the (+) button).
+# y range matters most: the digits sit at ~y49-90 on his screen — too-high a box
+# clips them to a stray '.'.  Box is left of the (+) and right of the cube/gems
+# so OCR can't sweep up the wrong currency.
+CASH_REGION_PHYS = (1690,  44, 1820,  98)
 TAB_REGION_PHYS  = (   0, 138, 1347, 174)
 VIP_REGION_PHYS  = (   0, 181,  786, 400)
 # The "Live Feed" panel runs down the RIGHT edge (physical x > ~1660) and its
@@ -331,6 +337,7 @@ def read_cash(hint=None):
     pil = Image.fromarray(thr)
     if DEBUG:
         pil.save(os.path.join(tempfile.gettempdir(), "debug_cash_thresh.png"))
+        Image.fromarray(img).save(os.path.join(tempfile.gettempdir(), "debug_cash_raw.png"))
     txt = pytesseract.image_to_string(
         pil, config="--psm 7 -c tessedit_char_whitelist=0123456789.$").strip()
     if DEBUG:
@@ -360,15 +367,24 @@ def check_for_confirm():
 # ─── DISCONNECT / REJOIN ──────────────────────────────────────────────────────
 
 def check_for_disconnect():
-    """If the Roblox kick dialog is up, click the rejoin button directly."""
+    """If the Roblox 'Disconnected' (AFK kick) dialog is up, click Leave then run
+    the two-step rejoin.  The dialog is detected by template; the clicks are the
+    fixed coordinates the user measured."""
     try:
-        pos = find_template(LEAVE_TEMPLATE, confidence=0.90,
+        pos = find_template(LEAVE_TEMPLATE, confidence=0.85,
                             scales=(1.0, 0.92, 1.08), label="leave")
     except Exception:
         return False                     # template not captured yet
     if pos:
-        print(f"  [⚠] DISCONNECTED — clicking rejoin at {KICK_REJOIN_POS}")
-        click(*KICK_REJOIN_POS)
+        print(f"  [⚠] DISCONNECTED (AFK kick) — rejoining…")
+        print(f"      1/3 Leave {LEAVE_POS}")
+        click(*LEAVE_POS)
+        time.sleep(LEAVE_WAIT)           # wait for the game landing page
+        print(f"      2/3 Rejoin step 1 {REJOIN_1}")
+        click(*REJOIN_1)
+        time.sleep(REJOIN_STEP_WAIT)     # let the play/join button appear
+        print(f"      3/3 Rejoin step 2 {REJOIN_2}")
+        click(*REJOIN_2)
         print(f"      loading… ({REJOIN_LOAD_WAIT:.0f}s)")
         time.sleep(REJOIN_LOAD_WAIT)
         return True
