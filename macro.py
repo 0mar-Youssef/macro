@@ -162,20 +162,26 @@ def _invalidate():
 
 # ─── CLICK ────────────────────────────────────────────────────────────────────
 
+def _glide(lx, ly, steps=22, step_delay=0.004):
+    """Move the cursor to (lx, ly) in small increments instead of teleporting.
+    Roblox only registers a button hover when it sees the cursor TRAVELING onto
+    it — pydirectinput.moveTo jumps in one shot (no intermediate move events), so
+    the hover never fires and the click is ignored.  Interpolating from the
+    current position emits a real stream of move events that arms the button."""
+    try:
+        cx, cy = pyautogui.position()        # reading the cursor is never blocked
+    except Exception:
+        cx, cy = lx, ly
+    for i in range(1, steps + 1):
+        x = int(cx + (lx - cx) * i / steps)
+        y = int(cy + (ly - cy) * i / steps)
+        _input.moveTo(x, y)
+        time.sleep(step_delay)
+
 def click(lx, ly):
-    # Roblox ignores an instantaneous (0 ms) synthetic click — press and release
-    # in the same instant never registers.  Move into place, let the cursor
-    # settle, then HOLD the button down briefly before releasing so the game
-    # sees a real press.
-    # Roblox GUI buttons only "arm" once they see the cursor MOVING over them,
-    # and pydirectinput.moveTo teleports (no intermediate move events) — so a
-    # straight move-then-click can land on a button that never registered the
-    # hover.  Wiggle a few px on the target first to emit real move events, then
-    # hold-click.
-    _input.moveTo(lx, ly)
-    _input.moveTo(lx - 4, ly - 4)
-    _input.moveTo(lx + 4, ly + 4)
-    _input.moveTo(lx, ly)
+    # Glide onto the target (see _glide) so Roblox arms the hover, settle, then
+    # HOLD the button down briefly — an instant press isn't registered either.
+    _glide(lx, ly)
     time.sleep(0.05)
     _input.mouseDown()
     time.sleep(0.09)
