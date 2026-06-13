@@ -147,10 +147,17 @@ def _invalidate():
 # ─── CLICK ────────────────────────────────────────────────────────────────────
 
 def click(lx, ly):
-    pyautogui.moveTo(lx, ly, duration=0.06)
-    pyautogui.click()
+    # Roblox ignores an instantaneous (0 ms) synthetic click — press and release
+    # in the same instant never registers.  Move into place, let the cursor
+    # settle, then HOLD the button down briefly before releasing so the game
+    # sees a real press.
+    pyautogui.moveTo(lx, ly, duration=0.08)
+    time.sleep(0.04)
+    pyautogui.mouseDown()
+    time.sleep(0.09)
+    pyautogui.mouseUp()
     _invalidate()
-    time.sleep(0.06)
+    time.sleep(0.08)
 
 # ─── TEMPLATE MATCH (few scales) ──────────────────────────────────────────────
 
