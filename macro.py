@@ -61,6 +61,15 @@ LEAVE_CHECK_AT = 6.0    # sell normally shows by ~4.8s; if it's not there by
 AFK_EVERY      = 5      # watch for the AFK popup every Nth round (during the
                         # spin's dead time; other rounds do zero AFK work)
 
+# Click pacing.  Roblox needs the cursor to GLIDE onto a target and SETTLE before
+# the press registers; too fast and the press lands mid-move (e.g. opening a
+# random case instead of switching tabs).  Bump these up to slow clicks down.
+GLIDE_STEPS  = 32       # interpolation steps from current pos to target
+GLIDE_DELAY  = 0.009    # seconds per step  -> ~0.29s of travel
+CLICK_SETTLE = 0.18     # pause after arriving on target, before pressing
+CLICK_HOLD   = 0.12     # button held down
+CLICK_POST   = 0.18     # pause after releasing, before the next action
+
 # The 1% tab sits at a FIXED spot (logical px).  Set once measured; OCR keeps
 # misreading it, so a hardcoded click is the reliable path.  None -> try OCR.
 ONE_PERCENT_TAB = (413, 177)
@@ -169,7 +178,7 @@ def _invalidate():
 
 # ─── CLICK ────────────────────────────────────────────────────────────────────
 
-def _glide(lx, ly, steps=22, step_delay=0.004):
+def _glide(lx, ly, steps=GLIDE_STEPS, step_delay=GLIDE_DELAY):
     """Move the cursor to (lx, ly) in small increments instead of teleporting.
     Roblox only registers a button hover when it sees the cursor TRAVELING onto
     it — pydirectinput.moveTo jumps in one shot (no intermediate move events), so
@@ -189,12 +198,12 @@ def click(lx, ly):
     # Glide onto the target (see _glide) so Roblox arms the hover, settle, then
     # HOLD the button down briefly — an instant press isn't registered either.
     _glide(lx, ly)
-    time.sleep(0.05)
+    time.sleep(CLICK_SETTLE)
     _input.mouseDown()
-    time.sleep(0.09)
+    time.sleep(CLICK_HOLD)
     _input.mouseUp()
     _invalidate()
-    time.sleep(0.08)
+    time.sleep(CLICK_POST)
 
 # ─── TEMPLATE MATCH (few scales) ──────────────────────────────────────────────
 
