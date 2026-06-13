@@ -45,7 +45,7 @@ AFK_EVERY      = 5      # watch for the AFK popup every Nth round (during the
 
 # The 1% tab sits at a FIXED spot (logical px).  Set once measured; OCR keeps
 # misreading it, so a hardcoded click is the reliable path.  None -> try OCR.
-ONE_PERCENT_TAB = (412, 156)
+ONE_PERCENT_TAB = (413, 177)
 
 # Leaf Case grid slot — fixed once the 1% tab is open (logical px).  Template
 # matching it was unreliable (conf ~0.30), so we click the known slot instead.
@@ -109,10 +109,13 @@ LIVE_FEED_X         = 1660
 SELL_REGION_PHYS    = (0, 0, LIVE_FEED_X, 1080)
 CONFIRM_REGION_PHYS = (0, 0, LIVE_FEED_X, 1080)
 
-# Bright, saturated green of the Sell button — calibrated from a real screen
-# capture (button measured at HSV S>=120; muted modal background is below this).
-SELL_GREEN_LO = np.array([40, 115, 105])
-SELL_GREEN_HI = np.array([82, 255, 255])
+# Green of the "Sell for X$" pill — calibrated from a real reward-modal capture.
+# The KEY discriminator is SATURATION: the pill is vivid (S~190-210) while the
+# pastel card background behind it is muted (S~140-150).  An S floor of 170 drops
+# the whole card out of the mask so only the button survives.  (Hue also helps:
+# pill H~59-61, card H~68-71 — the H ceiling of 67 trims the card too.)
+SELL_GREEN_LO = np.array([48, 170,  70])
+SELL_GREEN_HI = np.array([67, 255, 255])
 
 # ─── FAST SCREENSHOT (mss) ────────────────────────────────────────────────────
 # mss grabs the framebuffer directly (no subprocess / temp file).  We normalise
