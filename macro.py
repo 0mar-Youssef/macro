@@ -11,14 +11,30 @@ import os
 from PIL import Image
 
 if sys.platform == "win32":
-    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    for _p in (
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+    ):
+        if os.path.exists(_p):
+            pytesseract.pytesseract.tesseract_cmd = _p
+            break
 
 DEBUG = "--debug" in sys.argv
 
-# pyautogui ships with a hidden 0.1s nap after EVERY mouse command (its safety
-# brake).  Two commands per click = ~0.2s of tax per click we never asked for.
-# The corner-slam emergency abort (FAILSAFE) still works.
 pyautogui.PAUSE = 0
+
+# On Windows, Roblox ignores pyautogui's SendInput events.  pydirectinput sends
+# lower-level input that games accept.  Fall back to pyautogui on Mac/Linux.
+_input = pyautogui
+if sys.platform == "win32":
+    try:
+        import pydirectinput
+        pydirectinput.PAUSE = 0
+        pydirectinput.FAILSAFE = False
+        _input = pydirectinput
+    except ImportError:
+        print("[!] pydirectinput not installed — clicks may not register in Roblox")
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
@@ -26,7 +42,15 @@ CASH_TRIGGER  = 133.0
 DROP_MAX_WAIT = 9.0     # max seconds to wait for the drop modal
 DROP_MIN_WAIT = 4.0     # sell never shows before ~4.7s — pure sleep until here
 POLL_INTERVAL = 0.1     # fast polls in the catch window -> near-instant sell
-SELL_WAIT     = 0.1
+SELL_WAIT     = 0.4
+
+# Click pacing — Roblox needs the cursor to travel onto a button (hover),
+# not teleport.  _glide interpolates the movement in small steps.
+GLIDE_STEPS  = 32     # ~0.29s of travel at GLIDE_DELAY each
+GLIDE_DELAY  = 0.009
+CLICK_SETTLE = 0.18   # pause ON the target before pressing
+CLICK_HOLD   = 0.12   # button held down
+CLICK_POST   = 0.18   # pause after release
 LEAVE_CHECK_AT = 6.0    # sell normally shows by ~4.8s; if it's not there by
                         # now, check whether we got kicked (Leave dialog up)
 AFK_EVERY      = 5      # watch for the AFK popup every Nth round (during the
@@ -99,10 +123,10 @@ VIP_REGION_PHYS     = (   0, 241, 1048, 533)
 # matches from the green panels there.
 CONFIRM_REGION_PHYS = (0, 0, 2171, 1440)
 
-# Bright, saturated green of the Sell button — calibrated from a real screen
-# capture (button measured at HSV S>=120; muted modal background is below this).
-SELL_GREEN_LO = np.array([40, 115, 105])
-SELL_GREEN_HI = np.array([82, 255, 255])
+# Sell button: vivid green pill (S≈190-210).  Raised saturation floor drops the
+# pastel card background (S≈140-150) so only the pill survives the mask.
+SELL_GREEN_LO = np.array([48, 170,  70])
+SELL_GREEN_HI = np.array([67, 255, 255])
 
 # Minimum sell-button blob area scales with screen resolution so the threshold
 # stays valid across different display sizes (was 12_000 on 3420x2214).
@@ -140,11 +164,25 @@ def _invalidate():
 
 # ─── CLICK ────────────────────────────────────────────────────────────────────
 
+def _glide(lx, ly):
+    """Interpolate cursor from current position to (lx, ly) in many small steps.
+    Roblox requires the cursor to travel onto a button to arm its hover state —
+    a direct moveTo teleport skips that and the click does nothing."""
+    cx, cy = pyautogui.position()
+    for i in range(1, GLIDE_STEPS + 1):
+        x = int(cx + (lx - cx) * i / GLIDE_STEPS)
+        y = int(cy + (ly - cy) * i / GLIDE_STEPS)
+        _input.moveTo(x, y)
+        time.sleep(GLIDE_DELAY)
+
 def click(lx, ly):
-    pyautogui.moveTo(lx, ly, duration=0.06)
-    pyautogui.click()
+    _glide(lx, ly)
+    time.sleep(CLICK_SETTLE)
+    _input.mouseDown()
+    time.sleep(CLICK_HOLD)
+    _input.mouseUp()
+    time.sleep(CLICK_POST)
     _invalidate()
-    time.sleep(0.06)
 
 # ─── TEMPLATE MATCH (few scales) ──────────────────────────────────────────────
 
@@ -421,7 +459,7 @@ def recover():
     focus.  Cheap and safe to run on a clean screen too."""
     print("  [⟳] WATCHDOG — screen looks stuck, forcing a reset")
     for _ in range(2):
-        pyautogui.press("esc")
+        _input.press("esc")
         time.sleep(0.25)
     _invalidate()
     click(*NEUTRAL_CLICK)
