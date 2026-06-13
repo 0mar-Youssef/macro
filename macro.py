@@ -117,10 +117,9 @@ CASH_NEAR  = 6.0         # within this of the trigger -> read every round
 PHYS_W, PHYS_H = 1920, 1080
 
 # The cash number top-right (between the green cube icon and the (+) button).
-# y range matters most: the digits sit at ~y49-90 on his screen — too-high a box
-# clips them to a stray '.'.  Box is left of the (+) and right of the cube/gems
-# so OCR can't sweep up the wrong currency.
-CASH_REGION_PHYS = (1690,  44, 1820,  98)
+# User-measured bounding box of the digits: x 1718-1814, y 38-69.  A few px of
+# padding added so OCR doesn't clip the digit edges.
+CASH_REGION_PHYS = (1714,  34, 1818,  73)
 TAB_REGION_PHYS  = (   0, 138, 1347, 174)
 VIP_REGION_PHYS  = (   0, 181,  786, 400)
 # The "Live Feed" panel runs down the RIGHT edge (physical x > ~1660) and its
