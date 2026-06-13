@@ -467,6 +467,12 @@ def recover():
     click(*NEUTRAL_CLICK)
     time.sleep(0.4)
 
+def vip_visible(conf=0.65):
+    """True if the VIP Free Case button is currently on screen.  Used to confirm
+    which tab we're on: present == VIP view, absent == 1% (Leaf) view."""
+    return find_template(VIP_TEMPLATE, phys_region=VIP_REGION_PHYS,
+                         confidence=conf, label="vip?") is not None
+
 def open_and_sell_vip(check_afk=False):
     print("[→] VIP Free Case...")
     if not find_and_click(VIP_TEMPLATE, "VIP Free Case",
@@ -477,14 +483,27 @@ def open_and_sell_vip(check_afk=False):
 
 def open_leaf_case_once():
     print("\n[★] $133 — Leaf Case")
-    click_one_percent_tab()
-    time.sleep(1.0)
+    # Switch to the 1% tab.  A single click sometimes gets dropped by Roblox, so
+    # verify the VIP view is GONE before clicking Leaf — otherwise a missed tab
+    # click would land the Leaf click on the wrong (VIP) screen.
+    for attempt in range(3):
+        click_one_percent_tab()
+        time.sleep(1.0)
+        if not vip_visible():
+            break
+        print(f"  [retry] 1% tab didn't switch ({attempt + 1}/3)")
     print(f"  [✓] Leaf Case (fixed) at {LEAF_CASE_POS}")
     click(*LEAF_CASE_POS)
     sold = wait_for_drop_and_sell()
+    # Switch back.  Confirm the VIP view RETURNED so the next round can find it;
+    # retry the tab click if it didn't take.
     print("[→] Back to VIP tab...")
-    click_one_percent_tab()
-    time.sleep(0.6)
+    for attempt in range(3):
+        click_one_percent_tab()
+        time.sleep(0.8)
+        if vip_visible():
+            break
+        print(f"  [retry] back to VIP didn't switch ({attempt + 1}/3)")
     return sold
 
 # ─── ENTRY ────────────────────────────────────────────────────────────────────
