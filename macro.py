@@ -10,6 +10,9 @@ import tempfile
 import os
 from PIL import Image
 
+if sys.platform == "win32":
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
 DEBUG = "--debug" in sys.argv
 
 # pyautogui ships with a hidden 0.1s nap after EVERY mouse command (its safety
