@@ -116,7 +116,7 @@ DISPLAY_SCALE   = 1
 PHYS_W, PHYS_H  = 2560, 1440
 
 # Regions scaled proportionally from original 1710x1107 logical space.
-CASH_REGION_PHYS    = (2216,  65, 2470, 130)
+CASH_REGION_PHYS    = (2271,  39, 2421,  95)
 TAB_REGION_PHYS     = (   0, 200, 1797, 254)
 VIP_REGION_PHYS     = (   0, 241, 1048, 533)
 # Crop the right-edge Live Feed strip (physical x > 2170) to avoid false AFK
