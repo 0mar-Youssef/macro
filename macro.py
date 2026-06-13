@@ -104,6 +104,11 @@ CONFIRM_REGION_PHYS = (0, 0, 2171, 1440)
 SELL_GREEN_LO = np.array([40, 115, 105])
 SELL_GREEN_HI = np.array([82, 255, 255])
 
+# Minimum sell-button blob area scales with screen resolution so the threshold
+# stays valid across different display sizes (was 12_000 on 3420x2214).
+_AREA_SCALE   = (PHYS_W * PHYS_H) / (3420 * 2214)
+SELL_MIN_AREA = max(3000, int(12_000 * _AREA_SCALE))
+
 # ─── FAST SCREENSHOT (mss) ────────────────────────────────────────────────────
 # mss grabs the framebuffer directly (no subprocess / temp file).  On this
 # Retina display it may return logical OR physical resolution depending on the
@@ -216,7 +221,7 @@ def find_sell_button(exclude=None):
             continue
         area, aspect = w * h, w / h
         cx, cy = x + w // 2, y + h // 2
-        if area < 12_000:                 continue   # too small
+        if area < SELL_MIN_AREA:           continue   # too small
         if not (1.8 < aspect < 4.3):      continue   # button is wide
         if cy < sh * 0.30:                continue   # skip top cash/gems bar
         if not (sw * 0.08 < cx < sw*0.92):continue
@@ -283,6 +288,7 @@ def read_cash(hint=None):
     pil = Image.fromarray(thr)
     if DEBUG:
         pil.save(os.path.join(tempfile.gettempdir(), "debug_cash_thresh.png"))
+        Image.fromarray(img).save(os.path.join(tempfile.gettempdir(), "debug_cash_raw.png"))
     txt = pytesseract.image_to_string(
         pil, config="--psm 7 -c tessedit_char_whitelist=0123456789.$").strip()
     if DEBUG:
